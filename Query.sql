@@ -25,7 +25,7 @@ hello
 
 --TRIGGER
 --1 TRIG UPDATE
-
+Test Thu
 --1 TRIG INSERT
 
 --1 TRIG DELETE
