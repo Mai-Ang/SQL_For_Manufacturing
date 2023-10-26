@@ -8,13 +8,141 @@ hello
 --1 VIEW UPDATE
 
 --PROCEDURE
---1 KHÔNG THAM SỐ
+----hiển thị thông tin khi bomlevel = 2 và số lượng thành phần = 4----
+CREATE PROC Hienthithongtin
+AS
+BEGIN
+SELECT *from [Production.BillOfMaterials]
+WHERE PerAssemblyQty = 4 AND BOMLevel = 2
+END
 
---1 CÓ THAM SỐ DEFAULT
+EXEC Hienthithongtin
 
--- THAM SỐ INPUT
+----cập nhật 1 sản phẩm mới----
+ALTER PROCEDURE UpdateProduct
+    @ProductID INT,
+    @NewProductName NVARCHAR(50),
+    @Color NVARCHAR(15),
+    @NewListPrice MONEY
+AS
+BEGIN
+    -- Cập nhật thông tin sản phẩm trong bảng Products
+    UPDATE [Production.Product]
+    SET [Name] = @NewProductName,
+        Color = @Color,
+        ListPrice = @NewListPrice
+    WHERE ProductID = @ProductID
 
---1 THAM SỐ OUTPUT
+    -- In ra thông báo thành công
+    PRINT N'Thông tin sản phẩm có ID ' + CAST(@ProductID AS NVARCHAR(10)) + N' đã được cập nhật.'
+END
+EXEC UpdateProduct @ProductID = 10001, @NewProductName = N'Sản phẩm B', @Color = 'WhiteGray', @NewListPrice = 60.00
+
+
+----Tạo proc để tính tổng chi phí sản phẩm dựa trên các thông tin về nguyên liệu và công việc----
+ALTER PROC CalculateProductionCost
+    @ProductID INT,
+    @Quantity INT
+AS
+BEGIN
+    -- Tính tổng chi phí nguyên vật liệu
+    DECLARE @MaterialCost DECIMAL(10, 2)
+    SELECT @MaterialCost = SUM(ActualCost * @Quantity)
+    FROM [Production.TransactionHistory]
+    WHERE ProductID = @ProductID
+
+    -- Tính tổng chi phí công việc
+    DECLARE @LaborCost DECIMAL(10, 2)
+    SELECT @LaborCost = ListPrice * StandardCost
+    FROM [Production.Product]
+    WHERE ProductID = @ProductID
+
+    -- Tổng chi phí sản xuất
+    DECLARE @TotalCost DECIMAL(10, 2)
+    SET @TotalCost = @MaterialCost + @LaborCost
+
+    -- In ra kết quả
+	PRINT N'Tổng chi phí sản xuất cho sản phẩm ' + CAST(@ProductID AS NVARCHAR(10)) + ' là: ' + CAST(@TotalCost AS NVARCHAR(20))END
+EXEC CalculateProductionCost @ProductID = 956, @Quantity = 2
+
+
+--OUTPUT
+----output về thông tin chi tiết sản phẩm----
+ALTER PROC GetProductDetails
+    @ProductID INT,
+    @ProductName NVARCHAR(50) OUTPUT,
+    @Number NVARCHAR(50) OUTPUT,
+    @ListPrice Money OUTPUT
+AS
+BEGIN
+    -- Lấy thông tin sản phẩm dựa trên ID sản phẩm
+    SELECT @ProductName = [Name], @Number = ProductNumber, @ListPrice = ListPrice
+    FROM [Production.Product]
+    WHERE ProductID = @ProductID
+END
+DECLARE @ProductID INT = 518
+DECLARE @ProductName NVARCHAR(50)
+DECLARE @Number NVARCHAR(1000)
+DECLARE @ListPrice Money
+
+EXEC GetProductDetails @ProductID, @ProductName OUTPUT, @Number OUTPUT, @ListPrice OUTPUT
+
+PRINT N'Thông tin sản phẩm có ID: '+CAST(@ProductID AS NVARCHAR(10)) 
+PRINT N'Tên sản phẩm: ' + @ProductName
+PRINT N'Mã sản phẩm: ' + @Number
+PRINT N'Giá: ' + CAST(@ListPrice AS NVARCHAR(20))
+
+
+--INPUT
+----thêm phần tử vào SizeUnitMeasureCode----
+CREATE PROC UpdateProductSizeUnitMeasure
+    @ProductID INT,
+    @NewSizeUnitMeasureCode NVARCHAR(50)
+AS
+BEGIN
+    -- Cập nhật trường SizeUnitMeasureCode cho sản phẩm
+    UPDATE [Production.Product]
+    SET SizeUnitMeasureCode = @NewSizeUnitMeasureCode
+    WHERE ProductID = @ProductID
+END
+EXEC UpdateProductSizeUnitMeasure 
+    @ProductID = 326, -- 326 là ProductID của sản phẩm cần cập nhật
+    @NewSizeUnitMeasureCode = 'BOX' -- 'BOX' là giá trị mới cho trường SizeUnitMeasureCode
+
+
+----khai báo lỗi từ nguồn hàng khi nhập WorkOrderID nếu null sẽ không báo lỗi và ngược lại----
+ALTER PROC CheckWorkOrderErrors
+    @WorkOrderID INT
+AS
+BEGIN
+    DECLARE @ScrapReason NVARCHAR(255)
+	DECLARE @ScrapReasonID INT
+	 -- Kiểm tra xem có dữ liệu cho WorkOrderID đã nhập hay không
+    IF NOT EXISTS (SELECT 1 FROM [Production.WorkOrder] WHERE WorkOrderID = @WorkOrderID)
+    BEGIN
+        PRINT N'Không có dữ liệu.'
+        RETURN  -- Kết thúc stored procedure
+    END
+
+    -- Lấy thông tin ScrapReason từ bảng ScrapReason liên quan đến WorkOrder
+    SELECT @ScrapReasonID = sr.ScrapReasonID, @ScrapReason = sr.[Name]
+    FROM [Production.WorkOrder] AS wo
+    LEFT JOIN [Production.ScrapReason] AS sr ON wo.ScrapReasonID = sr.ScrapReasonID
+    WHERE wo.WorkOrderID = @WorkOrderID
+
+    -- Kiểm tra ScrapReason
+    IF @ScrapReason IS NULL
+    BEGIN
+        PRINT N'Không có lỗi.'
+    END
+    ELSE
+    BEGIN
+		PRINT N'Mã lỗi: ' + CAST(@ScrapReasonID AS NVARCHAR(10))
+        PRINT N'Tên lỗi: ' + @ScrapReason
+    END
+END
+-- Thực thi stored procedure với WorkOrderID 
+EXEC CheckWorkOrderErrors @WorkOrderID = 110
 
 --FUNCTION
 --2 TRẢ VÔ HƯỚNG
@@ -34,59 +162,3 @@ hello
 
 
 
---PROCEDURE
---hien thi thong tin hoa don khi bomlevel = 3
-CREATE PROC HienthithongtinHoadon
-AS
-BEGIN
-SELECT *from [Production.BillOfMaterials]
-WHERE PerAssemblyQty = 4 AND BOMLevel = 2
-END
-
-EXEC HienthithongtinHoadon
-
---tao them 1 dong vao bang scrapReason voi cot ModifiedDate lay mac dinh la nam hien tai
-CREATE PROC Taothembang(
-@ScrapReasonID SMALLINT,
-@Name NVARCHAR(50),
-@ModifiedDate DATETIME)
-AS
-BEGIN 
- IF @ModifiedDate IS NULL OR @ModifiedDate = ''
-SET @ModifiedDate = GETDATE();
-INSERT INTO [dbo].[Production.ScrapReason](ScrapReasonID,[Name],ModifiedDate)
-VALUES (@ScrapReasonID,@Name,@ModifiedDate)
-END
-SET IDENTITY_INSERT [dbo].[Production.ScrapReason] ON
-EXEC Taothembang 17,'Drill size medium',null
-select * from [dbo].[Production.ScrapReason]
-
---chua lam output
-
---xay dung thu tuc nhap vao --CÓ GÌ SỬA DÙM
---ALTER PROC p_ThongtinProduct(@ProductID INT)
---AS 
---BEGIN 
---IF @ProductID NOT IN (SELECT pp.ProductID FROM [Production.Product] pp
---INNER JOIN [Production.TransactionHistoryArchive] ptha 
---ON pp.ProductID = ptha.ProductID
---INNER JOIN [Production.TransactionHistory] pth
---ON pth.[ReferenceOrderLineID] = ptha.[ReferenceOrderLineID])
---PRINT(N'Mã Không tồn tại')
---ELSE
-	--SELECT [Name],ProductNumber
-	--FROM [Production.Product] pp
-	--WHERE pp.ProductID = @ProductID
---END
-
-CREATE PROC p_ThongtinProduct (@ProductID SMALLINT)
-AS
-BEGIN 
-	IF @ProductID NOT IN (SELECT ProductID FROM [Production.Product])
-	PRINT(N'Mã không tồn tại')
-ELSE
-	SELECT ProductID,[Name],ProductNumber
-	FROM [Production.Product]
-	WHERE ProductID = @ProductID
-END
-EXEC p_ThongtinProduct 531
